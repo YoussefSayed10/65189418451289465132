@@ -1,78 +1,106 @@
 name: Remote Desktop on GitHub Actions
 
 on:
-  workflow_dispatch: # ده بيسمحلك تشغل الـ workflow يدويًا من صفحة GitHub Actions
+  workflow_dispatch: # يسمح بتشغيل الـ workflow يدوياً
 
 jobs:
   remote-desktop:
-    runs-on: ubuntu-latest # بنستخدم أحدث نسخة من Ubuntu
+    runs-on: ubuntu-latest # يستخدم أحدث نسخة من Ubuntu
 
     env:
-      CRD_SSH_CODE: ${{ secrets.CODE }} # ده المتغير السري اللي هيكون فيه كود CRD
+      CRD_SSH_CODE: ${{ secrets.CODE }} # متغير سري لكود CRD
       USERNAME: user
       PASSWORD: root
       PIN: 123456
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4 # بيعمل checkout لمستودعك (لو فيه ملفات تانية محتاجها)
+      uses: actions/checkout@v4 # يسحب كود المستودع
 
     - name: Setup Remote Desktop Environment
       run: |
-        # تحديث النظام وتثبيت المتطلبات الأساسية
-        sudo apt update
-        sudo apt install -y curl wget xvfb xfce4 desktop-base xfce4-terminal xscreensaver xfce4-screensaver
+        echo "Starting setup for Remote Desktop Environment..."
 
-        # تثبيت Google Chrome Remote Desktop
-        wget https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb
-        sudo dpkg --install chrome-remote-desktop_current_amd64.deb || sudo apt install --assume-yes --fix-broken -y
+        # 1. تحديث النظام وتثبيت المتطلبات الأساسية
+        sudo apt update -y || { echo "Failed to update apt. Exiting."; exit 1; }
+        sudo apt install -y curl wget xvfb xfce4 desktop-base xfce4-terminal xscreensaver xfce4-screensaver sudo || { echo "Failed to install core packages. Exiting."; exit 1; }
+        
+        # 2. تثبيت Google Chrome Remote Desktop
+        wget https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb -O chrome-remote-desktop_current_amd64.deb || { echo "Failed to download Chrome Remote Desktop. Exiting."; exit 1; }
+        sudo dpkg --install chrome-remote-desktop_current_amd64.deb || sudo apt install --assume-yes --fix-broken -y || { echo "Failed to install Chrome Remote Desktop DEB. Exiting."; exit 1; }
+        echo "Chrome Remote Desktop package installed."
 
-        # تثبيت Google Chrome
-        wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-        sudo dpkg --install google-chrome-stable_current_amd64.deb || sudo apt install --assume-yes --fix-broken -y
+        # 3. تثبيت Google Chrome
+        wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -O google-chrome-stable_current_amd64.deb || { echo "Failed to download Google Chrome. Exiting."; exit 1; }
+        sudo dpkg --install google-chrome-stable_current_amd64.deb || sudo apt install --assume-yes --fix-broken -y || { echo "Failed to install Google Chrome DEB. Exiting."; exit 1; }
+        echo "Google Chrome installed."
 
-        # تثبيت Telegram Desktop
-        sudo apt install -y telegram-desktop
+        # 4. تثبيت Telegram Desktop
+        sudo apt install -y telegram-desktop || { echo "Failed to install Telegram Desktop. Exiting."; exit 1; }
+        echo "Telegram Desktop installed."
 
-        # تثبيت qBittorrent
-        sudo apt install -y qbittorrent
+        # 5. تثبيت qBittorrent
+        sudo apt install -y qbittorrent || { echo "Failed to install qBittorrent. Exiting."; exit 1; }
+        echo "qBittorrent installed."
 
-        # إعداد XFCE4 كبيئة سطح مكتب لـ CRD
+        # 6. إعداد XFCE4 كبيئة سطح مكتب لـ CRD
         echo "exec /etc/X11/Xsession /usr/bin/xfce4-session" | sudo tee /etc/chrome-remote-desktop-session > /dev/null
-        sudo systemctl disable lightdm.service
+        sudo systemctl disable lightdm.service # لضمان عدم التعارض
+        echo "XFCE4 configured for CRD."
 
-        # إنشاء المستخدم وتعيين كلمة المرور
-        sudo useradd -m ${USERNAME}
-        sudo adduser ${USERNAME} sudo
-        echo "${USERNAME}:${PASSWORD}" | sudo chpasswd
-        sudo sed -i 's/\/bin\/sh/\/bin\/bash/g' /etc/passwd
+        # 7. إنشاء المستخدم وتعيين كلمة المرور
+        sudo useradd -m ${USERNAME} || { echo "Failed to create user. Exiting."; exit 1; }
+        sudo adduser ${USERNAME} sudo || { echo "Failed to add user to sudo group. Exiting."; exit 1; }
+        echo "${USERNAME}:${PASSWORD}" | sudo chpasswd || { echo "Failed to set user password. Exiting."; exit 1; }
+        sudo sed -i 's/\/bin\/sh/\/bin\/bash/g' /etc/passwd || { echo "Failed to change user shell. Exiting."; exit 1; }
+        echo "User ${USERNAME} created and configured."
 
-        # إضافة المستخدم لـ chrome-remote-desktop group
-        sudo adduser ${USERNAME} chrome-remote-desktop
+        # 8. إضافة المستخدم لـ chrome-remote-desktop group
+        sudo adduser ${USERNAME} chrome-remote-desktop || { echo "Failed to add user to CRD group. Exiting."; exit 1; }
+        echo "User added to chrome-remote-desktop group."
+        
+        # 9. إعداد CRD باستخدام الكود السري والـ PIN
+        # هذا هو الجزء الحاسم. CRD_SSH_CODE يجب أن يكون صحيحاً.
+        # قد تحتاج للتجربة هنا. الأسلوب الموصى به من Google هو التالي (مع --enable-remote-connection)
+        
+        # أ: كتابة الكود إلى ملف مؤقت أو تمريره لـ stdin
+        # الطريقة الأولى (المفضلة):
+        #sudo -u ${USERNAME} /opt/google/chrome-remote-desktop/chrome-remote-desktop --enable-remote-connection --pin=${PIN} --user-data-dir=/home/${USERNAME}/.config/chrome-remote-desktop --code=${CRD_SSH_CODE}
 
-        # إعداد CRD باستخدام الكود السري والـ PIN
-        # لازم تشغل الأمر ده كمستخدم ${USERNAME} عشان يتم حفظ الإعدادات صحيحة
-        # هذا الجزء تحدي كبير في GitHub Actions لأن ${CRD_SSH_CODE} عادةً ما يكون TOKEN طويل جدًا ويحتوي على مسافات
-        # وقد لا يعمل مباشرة مع 'su -c'. قد تحتاج لاستخدام ملف مؤقت أو طرق أخرى لتمرير الكود بأمان.
-        # الطريقة الأمثل هي:
-        # 1. تشغيل CRD بالتوكن
-        # 2. بدء الخدمة
-        # 3. ابقاء الـ Job شغال
+        # الطريقة الثانية (إذا كانت الأولى لا تعمل):
+        #sudo -u ${USERNAME} /opt/google/chrome-remote-desktop/start-chrome-remote-desktop --code-url="unused" --redirect-url="unused" --pin=${PIN} <(echo "${CRD_SSH_CODE}")
+        
+        # الطريقة الثالثة (الأكثر شيوعاً للمشاكل مع الأسطر الطويلة):
+        # تخزين الكود في متغير shell وتشغيله كمستخدم
+        # ملاحظة: هذه الطريقة قد تكون غير آمنة تماماً لأن الكود يظهر في logs كمتغير
+        # لكنها أحياناً تكون الوحيدة التي تعمل
+        # code_to_use="${CRD_SSH_CODE}"
+        # sudo -u ${USERNAME} bash -c "export CHROME_REMOTE_DESKTOP_CODE='${code_to_use}'; /opt/google/chrome-remote-desktop/start-chrome-remote-desktop --pin=${PIN}"
 
-        # محاولة تنفيذ أمر CRD الأساسي
-        # الطريقة دي ممكن تحتاج تعديل بناءً على كيفية توقع CRD للتوكن
-        echo "${CRD_SSH_CODE}" | /opt/google/chrome-remote-desktop/start-chrome-remote-desktop --code-url="unused" --redirect-url="unused" --pin=${PIN}
+        # الطريقة الموصى بها إذا لم تعمل الطرق السابقة:
+        # جوجل توصي باستخدام أمر auth_proxy من الجهاز المحلي
+        # بما اننا بنعملها داخل الـ VM، ممكن تحتاج تهيئة يدوية للخدمة.
+        # الطريقة الأكثر موثوقية: استخدم الأمر الخاص بـ CRD
+        # تأكد أن الكود نفسه لا يحتوي على علامات اقتباس غير ضرورية
+        # sudo -u ${USERNAME} bash -c "DISPLAY=:0 /opt/google/chrome-remote-desktop/start-chrome-remote-desktop --code-url='${CRD_SSH_CODE}' --redirect-url='https://remotedesktop.google.com/_/oauthredirect' --pin=${PIN}"
+        
+        # الطريقة الأكثر بساطة وتعمل مع معظم الحالات:
+        # هذا الأمر يتوقع ان الكود بيجي من stdin
+        echo "${CRD_SSH_CODE}" | sudo -u ${USERNAME} /opt/google/chrome-remote-desktop/start-chrome-remote-desktop --pin=${PIN} --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --code-url="unused"
 
-        # بدء خدمة Chrome Remote Desktop (مهم جداً)
-        sudo service chrome-remote-desktop start
 
-        echo "Chrome Remote Desktop should now be running. You can connect using the specified PIN and user/pass."
+        # 10. بدء خدمة Chrome Remote Desktop
+        sudo service chrome-remote-desktop start || { echo "Failed to start CRD service. Exiting."; exit 1; }
+        echo "Chrome Remote Desktop service started."
+
+        echo "Chrome Remote Desktop should now be running."
         echo "Remember, this session will terminate after max 6 hours or when the workflow step finishes."
         echo "Log in PIN : ${PIN}"
         echo "User Name : ${USERNAME}"
         echo "User Pass : ${PASSWORD}"
-
-        # ابقاء الـ Job شغال عشان CRD يستمر في العمل
-        # هيفضل شغال لحد ما الـ job يوصل لأقصى مدة (6 ساعات)
-        echo "Keeping the job alive for maximum duration..."
+        
+        # 11. ابقاء الـ Job شغال عشان CRD يستمر في العمل
+        echo "Keeping the job alive for maximum duration (6 hours)..."
         sleep 21600 # 6 ساعات * 60 دقيقة * 60 ثانية
+
+        echo "Workflow completed (or max duration reached)."
